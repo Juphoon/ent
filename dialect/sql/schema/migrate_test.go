@@ -60,7 +60,7 @@ func TestMigrateHookAddTable(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestMigrateHookAddTableWithPartition(t *testing.T) {
+func TestMigrateHookAddTableWithRangePartition(t *testing.T) {
 	db, mk, err := sqlmock.New()
 	require.NoError(t, err)
 
@@ -72,7 +72,25 @@ func TestMigrateHookAddTableWithPartition(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
-	migrate, err := NewMigrate(sql.OpenDB("mysql", db), WithPartition(sql.PartitionByRange, "id", []string{"10"}, "users"))
+	migrate, err := NewMigrate(sql.OpenDB("mysql", db), WithRangePartition("id", []string{"10"}, "users"))
+	require.NoError(t, err)
+	err = migrate.Create(context.Background(), tables...)
+	require.NoError(t, err)
+}
+
+func TestMigrateHookAddTableWithHashPartition(t *testing.T) {
+	db, mk, err := sqlmock.New()
+	require.NoError(t, err)
+
+	tables := []*Table{{Name: "users"}}
+	mock := mysqlMock{mk}
+	mock.start("5.7.23")
+	mock.tableExists("users", false)
+	mock.ExpectExec(escape("CREATE TABLE IF NOT EXISTS `users`() CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PARTITION BY HASH (`id`) PARTITIONS 10")).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	migrate, err := NewMigrate(sql.OpenDB("mysql", db), WithHashPartition("id", 10, "users"))
 	require.NoError(t, err)
 	err = migrate.Create(context.Background(), tables...)
 	require.NoError(t, err)

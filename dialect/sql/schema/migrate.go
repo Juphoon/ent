@@ -66,10 +66,17 @@ func WithForeignKeys(b bool) MigrateOption {
 	}
 }
 
-// WithPartition add partition config. Defaults to none.
-func WithPartition(ptype sql.PartitionType, key string, pslice []string, tableName string) MigrateOption {
+// WithRangePartition add partition config by range.
+func WithRangePartition(key string, pslice []string, tableName string) MigrateOption {
 	return func(m *Migrate) {
-		m.partitions = append(m.partitions, sql.CreatePartition(ptype, key, pslice, tableName))
+		m.partitions = append(m.partitions, sql.CreateRangePartition(key, pslice, tableName))
+	}
+}
+
+// WithHashPartition add partition config by hash.
+func WithHashPartition(key string, count int, tableName string) MigrateOption {
+	return func(m *Migrate) {
+		m.partitions = append(m.partitions, sql.CreateHashPartition(key, count, tableName))
 	}
 }
 
@@ -112,14 +119,14 @@ func (f CreateFunc) Create(ctx context.Context, tables ...*Table) error {
 // Migrate runs the migrations logic for the SQL dialects.
 type Migrate struct {
 	sqlDialect
-	universalID     bool             // global unique ids.
-	dropColumns     bool             // drop deleted columns.
-	dropIndexes     bool             // drop deleted indexes.
-	withFixture     bool             // with fks rename fixture.
-	withForeignKeys bool             // with foreign keys
-	typeRanges      []string         // types order by their range.
-	hooks           []Hook           // hooks to apply before creation
-	partitions      []*sql.Partition // partition config
+	universalID     bool            // global unique ids.
+	dropColumns     bool            // drop deleted columns.
+	dropIndexes     bool            // drop deleted indexes.
+	withFixture     bool            // with fks rename fixture.
+	withForeignKeys bool            // with foreign keys
+	typeRanges      []string        // types order by their range.
+	hooks           []Hook          // hooks to apply before creation
+	partitions      []sql.Partition // partition config interface
 }
 
 // NewMigrate create a migration structure for the given SQL driver.

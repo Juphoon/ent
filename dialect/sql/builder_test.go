@@ -111,7 +111,7 @@ func TestBuilder(t *testing.T) {
 					Column("name").Type("varchar(255)"),
 				).
 				PrimaryKey("id").
-				Partition(&Partition{
+				Partition(&RangePartition{
 					partitionType:       PartitionByRange,
 					partitionRangeKey:   "id",
 					partitionRangeSlice: []string{"5", "10", "maxvalue"},
@@ -125,7 +125,7 @@ func TestBuilder(t *testing.T) {
 					Column("name").Type("varchar(255)"),
 				).
 				PrimaryKey("id").
-				Partition(&Partition{
+				Partition(&RangePartition{
 					partitionType:       PartitionByRange,
 					partitionRangeKey:   "id",
 					partitionRangeSlice: []string{"maxvalue"},
@@ -139,12 +139,26 @@ func TestBuilder(t *testing.T) {
 					Column("name").Type("varchar(255)"),
 				).
 				PrimaryKey("id").
-				Partition(&Partition{
+				Partition(&RangePartition{
 					partitionType:       PartitionNone,
 					partitionRangeKey:   "id",
 					partitionRangeSlice: []string{"maxvalue"},
 				}),
 			wantQuery: "CREATE TABLE `users`(`id` int auto_increment, `name` varchar(255), PRIMARY KEY(`id`))",
+		},
+		{
+			input: CreateTable("users").
+				Columns(
+					Column("id").Type("int").Attr("auto_increment"),
+					Column("name").Type("varchar(255)"),
+				).
+				PrimaryKey("id").
+				Partition(&HashPartition{
+					partitionType:      PartitionByHash,
+					partitionHashKey:   "id",
+					partitionHashCount: 4,
+				}),
+			wantQuery: "CREATE TABLE `users`(`id` int auto_increment, `name` varchar(255), PRIMARY KEY(`id`)) PARTITION BY HASH (`id`) PARTITIONS 4",
 		},
 		{
 			input: AlterTable("users").

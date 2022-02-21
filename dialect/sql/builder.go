@@ -31,20 +31,29 @@ const (
 
 	//PartitionByRange partition by range
 	PartitionByRange PartitionType = 1
+
+	//PartitionByHash partition by hash
+	PartitionByHash PartitionType = 2
 )
 
-// Partition defined the config of partition
-type Partition struct {
+// Partition is the interface that wraps the Partition method.
+type Partition interface {
+	TableMatch(table string) bool
+	Type() PartitionType
+}
+
+// RangePartition defined the config of partition by range
+type RangePartition struct {
 	partitionType       PartitionType // partition type
 	partitionRangeKey   string        // partition by range key
 	partitionRangeSlice []string      // partition by range slice
 	partitionTableName  string        // partition effect table name
 }
 
-// CreatePartition returns a partition config.
-func CreatePartition(ptype PartitionType, key string, slice []string, table string) *Partition {
-	return &Partition{
-		partitionType:       ptype,
+// CreateRangePartition returns a rangePartition config.
+func CreateRangePartition(key string, slice []string, table string) *RangePartition {
+	return &RangePartition{
+		partitionType:       PartitionByRange,
 		partitionRangeKey:   key,
 		partitionRangeSlice: slice,
 		partitionTableName:  table,
@@ -52,8 +61,41 @@ func CreatePartition(ptype PartitionType, key string, slice []string, table stri
 }
 
 // TableMatch returns whether table name matched
-func (p *Partition) TableMatch(table string) bool {
+func (p *RangePartition) TableMatch(table string) bool {
 	return p.partitionTableName == table
+}
+
+// Type returns partition type
+func (p *RangePartition) Type() PartitionType {
+	return p.partitionType
+}
+
+// HashPartition defined the config of partition by hash
+type HashPartition struct {
+	partitionType      PartitionType // partition type
+	partitionHashKey   string        // partition by hash key
+	partitionHashCount int           // partition by hash count
+	partitionTableName string        // partition effect table name
+}
+
+// CreateHashPartition returns a hashPartition config.
+func CreateHashPartition(key string, count int, table string) *HashPartition {
+	return &HashPartition{
+		partitionType:      PartitionByHash,
+		partitionHashKey:   key,
+		partitionHashCount: count,
+		partitionTableName: table,
+	}
+}
+
+// TableMatch returns whether table name matched
+func (p *HashPartition) TableMatch(table string) bool {
+	return p.partitionTableName == table
+}
+
+// Type returns partition type
+func (p *HashPartition) Type() PartitionType {
+	return p.partitionType
 }
 
 // Querier wraps the basic Query method that is implemented
@@ -151,7 +193,7 @@ type TableBuilder struct {
 	primary     []string         // primary key.
 	constraints []Querier        // foreign keys and indices.
 	checks      []func(*Builder) // check constraints.
-	partition   *Partition       // partition type
+	partition   Partition        // partition type
 }
 
 // CreateTable returns a query builder for the `CREATE TABLE` statement.
@@ -233,7 +275,7 @@ func (t *TableBuilder) Collate(s string) *TableBuilder {
 }
 
 // Partition appends the `PARTITION BY` clause to the statement. MySQL only.
-func (t *TableBuilder) Partition(p *Partition) *TableBuilder {
+func (t *TableBuilder) Partition(p Partition) *TableBuilder {
 	t.partition = p
 	return t
 }
@@ -281,16 +323,21 @@ func (t *TableBuilder) Query() (string, []interface{}) {
 		t.WriteString(" " + t.options)
 	}
 	if t.partition != nil {
-		switch t.partition.partitionType {
+		switch t.partition.Type() {
 		case PartitionByRange:
-			t.WriteString(" PARTITION BY RANGE (" + t.Quote(t.partition.partitionRangeKey) + ") (")
-			for index, p := range t.partition.partitionRangeSlice {
+			partition := t.partition.(*RangePartition)
+			t.WriteString(" PARTITION BY RANGE (" + t.Quote(partition.partitionRangeKey) + ") (")
+			for index, p := range partition.partitionRangeSlice {
 				t.WriteString(fmt.Sprintf("PARTITION p%v VALUES LESS THAN (%v)", index, p))
-				if index != len(t.partition.partitionRangeSlice)-1 {
+				if index != len(partition.partitionRangeSlice)-1 {
 					t.WriteString(",")
 				}
 			}
 			t.WriteString(")")
+		case PartitionByHash:
+			partition := t.partition.(*HashPartition)
+			t.WriteString(" PARTITION BY HASH (" + t.Quote(partition.partitionHashKey) + ")")
+			t.WriteString(fmt.Sprintf(" PARTITIONS %v", partition.partitionHashCount))
 		}
 	}
 	return t.String(), t.args
